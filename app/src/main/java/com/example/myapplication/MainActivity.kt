@@ -1,8 +1,8 @@
 package com.example.myapplication
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
-import android.os.AsyncTask
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
@@ -14,15 +14,25 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.gson.Gson
 import com.squareup.picasso.Picasso
-import io.reactivex.Observable
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.disposables.Disposable
-import io.reactivex.rxkotlin.zipWith
 import io.reactivex.schedulers.Schedulers
+import io.realm.Realm
+import io.realm.RealmList
+import io.realm.RealmObject
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.list_item.view.*
-import java.net.HttpURLConnection
-import java.net.URL
+
+open class Feed(
+    var items: RealmList<FeedItem> = RealmList<FeedItem>()
+) : RealmObject()
+
+open class FeedItem(
+    var title: String = "",
+    var link: String = "",
+    var thumbnail: String = "",
+    var description: String = ""
+) : RealmObject()
 
 class MainActivity : AppCompatActivity() {
     var request: Disposable? = null
@@ -34,22 +44,56 @@ class MainActivity : AppCompatActivity() {
         val o =
             createRequest("https://api.rss2json.com/v1/api.json?rss_url=http%3A%2F%2Ffeeds.bbci.co.uk%2Fnews%2Frss.xml")
                 .map {
-                    Gson().fromJson(it, Feed::class.java)
+                    Gson().fromJson(it, FeedApi::class.java)
 
                 }
                 .subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread())
 
         request = o.subscribe({
 
-            showRecView(it.items)
+            //  преобразовываем фиды в фиды для БД
+            val Feed = Feed(
+                it.items.mapTo(RealmList<FeedItem>(),
+                    { feed ->
+                        FeedItem(
+                            feed.title,
+                            feed.link, feed.thumbnail, feed.description
+                        )
+                    })
+            )
+
+                // удаляем все фиды с бд если такие существуют
+            Realm.getDefaultInstance().executeTransaction { realm ->
+                val oldList = realm.where(Feed::class.java).findAll()
+                if(oldList.size>0)
+                    for (item in oldList)
+                        item.deleteFromRealm()
+
+                // добавляем в бд фид
+                realm.copyToRealm(Feed)
+
+            }
+            showRecView()
+
 //                for (item in it.items)
 //                    Log.w("test","title: ${item.title}")
             // todo что сделать при успешном запросе
         }, {
             Log.e("test", "", it)
+            showRecView()
+
             // todo обработчик ошибок
         })
 
+
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
 
     }
 
@@ -75,10 +119,19 @@ class MainActivity : AppCompatActivity() {
 //        act1_recview.adapter = Adapter(feedList)
 //    }
 
-    fun showRecView(feedList: ArrayList<FeedItem>) {
-        act1_recview.adapter = RecAdapter(feedList)
-        act1_recview.layoutManager = LinearLayoutManager(this)
-    }
+    fun showRecView() {
+
+        val feed = Realm.getDefaultInstance().executeTransaction {realm ->
+           val feed =  realm.where(Feed::class.java).findAll()
+            if(feed.size>0)
+            {
+                act1_recview.adapter = RecAdapter(feed[0]!!.items)
+                act1_recview.layoutManager = LinearLayoutManager(this)
+            }
+        }
+
+        }
+
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -109,11 +162,11 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    class Feed(
-        val items: ArrayList<FeedItem>
+    class FeedApi(
+        val items: ArrayList<FeedItemApi>
     )
 
-    class FeedItem(
+    class FeedItemApi(
         val title: String,
         val link: String,
         val thumbnail: String,
@@ -121,7 +174,9 @@ class MainActivity : AppCompatActivity() {
 
     )
 
-    class Adapter(val items: ArrayList<FeedItem>) : BaseAdapter() {
+
+
+    class Adapter(val items: ArrayList<FeedItemApi>) : BaseAdapter() {
         override fun getView(position: Int, converView: View?, parent: ViewGroup?): View {
 
             val inflater = LayoutInflater.from(parent!!.context)
@@ -132,7 +187,7 @@ class MainActivity : AppCompatActivity() {
                 parent,
                 false
             )
-            val item = getItem(position) as FeedItem
+            val item = getItem(position) as FeedItemApi
             view.item_title.text = item.title
             return view
 
@@ -152,7 +207,7 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    class RecAdapter(val items: ArrayList<FeedItem>) : RecyclerView.Adapter<RecHolder>() {
+    class RecAdapter(val items: RealmList<FeedItem>) : RecyclerView.Adapter<RecHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecHolder {
 
             val inflater = LayoutInflater.from(parent!!.context)
@@ -172,7 +227,7 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: RecHolder, position: Int) {
 
-            val item = items[position] as FeedItem
+            val item = items[position]!!
             holder?.bind(item)
         }
 
@@ -190,7 +245,9 @@ class MainActivity : AppCompatActivity() {
             val defaultImage = "https://s.4pda.to/EmSL2n4fy6AgWnDxCWgsWIP5oDmaNp0Uxhs8.jpg"
             itemView.item_title.text = item.title
             itemView.item_description.text = item.description
-            Picasso.with(itemView.item_thumb.context).load(if(item.thumbnail.isNotBlank()) item.thumbnail else defaultImage).into(itemView.item_thumb)
+            Picasso.with(itemView.item_thumb.context)
+                .load(if (item.thumbnail.isNotBlank()) item.thumbnail else defaultImage)
+                .into(itemView.item_thumb)
 
             itemView.setOnClickListener {
                 val i = Intent(Intent.ACTION_VIEW)

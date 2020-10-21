@@ -20,6 +20,7 @@ import io.reactivex.schedulers.Schedulers
 import io.realm.Realm
 import io.realm.RealmList
 import io.realm.RealmObject
+import kotlinx.android.synthetic.main.activity_fragment.*
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.list_item.view.*
 
@@ -35,109 +36,24 @@ open class FeedItem(
 ) : RealmObject()
 
 class MainActivity : AppCompatActivity() {
-    var request: Disposable? = null
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContentView(R.layout.activity_fragment)
 
-        val o =
-            createRequest("https://api.rss2json.com/v1/api.json?rss_url=http%3A%2F%2Ffeeds.bbci.co.uk%2Fnews%2Frss.xml")
-                .map {
-                    Gson().fromJson(it, FeedApi::class.java)
+        // если активити не восстановилось то восстанавливаем его
+        if (savedInstanceState == null) {
 
-                }
-                .subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread())
-
-        request = o.subscribe({
-
-            //  преобразовываем фиды в фиды для БД
-            val Feed = Feed(
-                it.items.mapTo(RealmList<FeedItem>(),
-                    { feed ->
-                        FeedItem(
-                            feed.title,
-                            feed.link, feed.thumbnail, feed.description
-                        )
-                    })
-            )
-
-                // удаляем все фиды с бд если такие существуют
-            Realm.getDefaultInstance().executeTransaction { realm ->
-                val oldList = realm.where(Feed::class.java).findAll()
-                if(oldList.size>0)
-                    for (item in oldList)
-                        item.deleteFromRealm()
-
-                // добавляем в бд фид
-                realm.copyToRealm(Feed)
-
-            }
-            showRecView()
-
-//                for (item in it.items)
-//                    Log.w("test","title: ${item.title}")
-            // todo что сделать при успешном запросе
-        }, {
-            Log.e("test", "", it)
-            showRecView()
-
-            // todo обработчик ошибок
-        })
+            // если нужно передать что то при создании активити, то сделаем так
+            val bundle = Bundle()
+            bundle.putString("param", "value")
+            val f = MainFragment()
+            f.arguments = bundle
 
 
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-
-    }
-
-//    fun showLinearLayout(feedList: ArrayList<FeedItem>) {
-//
-//        // создается инфлейтер
-//        val inflater = layoutInflater
-//
-//        // пробегаемся по списку фидов
-//        for (f in feedList) {
-//
-//            // указываем какую вьюху использовать, куда вставлять и заменять ли при вставке
-//            val view = inflater.inflate(R.layout.list_item, act1_list, false)
-//            view.item_title.text = f.title
-//
-//            // добавляем вьюху в лайнир
-//            act1_list.addView(view)
-//        }
-//    }
-
-
-//    fun showListView(feedList: ArrayList<FeedItem>) {
-//        act1_recview.adapter = Adapter(feedList)
-//    }
-
-    fun showRecView() {
-
-        val feed = Realm.getDefaultInstance().executeTransaction {realm ->
-           val feed =  realm.where(Feed::class.java).findAll()
-            if(feed.size>0)
-            {
-                act1_recview.adapter = RecAdapter(feed[0]!!.items)
-                act1_recview.layoutManager = LinearLayoutManager(this)
-            }
-        }
-
-        }
-
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (data != null) {
-            val str = data.getStringExtra("tag2")
-//            act1_text.setText(str)
+            this@MainActivity.getSupportFragmentManager().beginTransaction()
+                .replace(R.id.fragment_place, f).commitAllowingStateLoss()
         }
     }
 
@@ -158,7 +74,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        request?.dispose()
+//        request?.dispose()
         super.onDestroy()
     }
 
@@ -173,7 +89,6 @@ class MainActivity : AppCompatActivity() {
         val description: String
 
     )
-
 
 
     class Adapter(val items: ArrayList<FeedItemApi>) : BaseAdapter() {
@@ -252,9 +167,29 @@ class MainActivity : AppCompatActivity() {
             itemView.setOnClickListener {
                 val i = Intent(Intent.ACTION_VIEW)
                 i.data = Uri.parse(item.link)
-                itemView.item_thumb.context.startActivity(i)
+                (itemView.item_thumb.context as MainActivity).showArticle(item.link)
             }
         }
 
+    }
+
+    fun showArticle(url: String) {
+        // если активити не восстановилось то восстанавливаем его
+
+        // если нужно передать что то при создании активити, то сделаем так
+        val bundle = Bundle()
+        bundle.putString("url", url)
+        val f = SecondFragment()
+        f.arguments = bundle
+
+//        fragment_place2
+
+        if(fragment_place2!=null){
+            fragment_place2.visibility = View.VISIBLE
+            this@MainActivity.getSupportFragmentManager().beginTransaction()
+                .replace(R.id.fragment_place2, f).commitAllowingStateLoss()
+        } else
+        this@MainActivity.getSupportFragmentManager().beginTransaction()
+            .add(R.id.fragment_place, f).addToBackStack("main").commitAllowingStateLoss()
     }
 }

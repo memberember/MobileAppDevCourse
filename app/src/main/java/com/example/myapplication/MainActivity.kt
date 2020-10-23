@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.text.Html
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -32,8 +33,10 @@ open class FeedItem(
     var title: String = "",
     var link: String = "",
     var thumbnail: String = "",
-    var description: String = ""
+    var description: String = "",
+    var guid: String = ""
 ) : RealmObject()
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -78,6 +81,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+
     class FeedApi(
         val items: ArrayList<FeedItemApi>
     )
@@ -86,10 +90,9 @@ class MainActivity : AppCompatActivity() {
         val title: String,
         val link: String,
         val thumbnail: String,
-        val description: String
-
+        val description: String,
+        val guid: String
     )
-
 
     class Adapter(val items: ArrayList<FeedItemApi>) : BaseAdapter() {
         override fun getView(position: Int, converView: View?, parent: ViewGroup?): View {
@@ -159,18 +162,29 @@ class MainActivity : AppCompatActivity() {
         fun bind(item: FeedItem) {
             val defaultImage = "https://s.4pda.to/EmSL2n4fy6AgWnDxCWgsWIP5oDmaNp0Uxhs8.jpg"
             itemView.item_title.text = item.title
-            itemView.item_description.text = item.description
+            itemView.item_description.text = Html.fromHtml(item.description)
             Picasso.with(itemView.item_thumb.context)
                 .load(if (item.thumbnail.isNotBlank()) item.thumbnail else defaultImage)
                 .into(itemView.item_thumb)
 
             itemView.setOnClickListener {
-                val i = Intent(Intent.ACTION_VIEW)
-                i.data = Uri.parse(item.link)
-                (itemView.item_thumb.context as MainActivity).showArticle(item.link)
+//                val i = Intent(Intent.ACTION_VIEW)
+//                i.data = Uri.parse(item.link)
+//                (itemView.item_thumb.context as MainActivity).showArticle(item.link)
+                (itemView.item_thumb.context as MainActivity).playMusic(item.guid)
             }
         }
 
+    }
+
+    private fun playMusic(url: String) {
+        val i = Intent(this, PlayService::class.java)
+        Log.w("Debug", url)
+
+        // todo кастыль потому что не грузит с апишки
+        var uri = "https://file-examples-com.github.io/uploads/2017/11/file_example_MP3_700KB.mp3"
+        i.putExtra("mp3", uri)
+        startService(i)
     }
 
     fun showArticle(url: String) {
@@ -184,12 +198,12 @@ class MainActivity : AppCompatActivity() {
 
 //        fragment_place2
 
-        if(fragment_place2!=null){
+        if (fragment_place2 != null) {
             fragment_place2.visibility = View.VISIBLE
             this@MainActivity.getSupportFragmentManager().beginTransaction()
                 .replace(R.id.fragment_place2, f).commitAllowingStateLoss()
         } else
-        this@MainActivity.getSupportFragmentManager().beginTransaction()
-            .add(R.id.fragment_place, f).addToBackStack("main").commitAllowingStateLoss()
+            this@MainActivity.getSupportFragmentManager().beginTransaction()
+                .add(R.id.fragment_place, f).addToBackStack("main").commitAllowingStateLoss()
     }
 }
